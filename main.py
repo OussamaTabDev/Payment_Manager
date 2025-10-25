@@ -129,4 +129,39 @@ print("\nUpdated kids dataframe:")
 print(kids_df.head())
 
 # Save the updated dataframe back to Excel if needed
-kids_df.to_excel("updated_kids_list.xlsx", index=False)
+# kids_df.to_excel("updated_kids_list.xlsx", index=False)
+
+
+# Save the updated dataframe first
+output_file = "updated_kids_list.xlsx"
+kids_df.to_excel(output_file, index=False)
+
+# Now apply styling with openpyxl
+wb = openpyxl.load_workbook(output_file)
+ws = wb.active
+
+# Define green fill (you can also use Font color if preferred)
+from openpyxl.styles import PatternFill
+green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")  # Light green (like Excel's "Good" style)
+
+# Get the header row to find column indices for month columns
+headers = [cell.value for cell in ws[1]]  # First row
+
+# Find column indices (1-based) for each month column
+month_col_indices = []
+for col_idx, header in enumerate(headers, start=1):
+    if header in month_columns:
+        month_col_indices.append(col_idx)
+
+# Iterate through rows (skip header)
+for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+    for col_idx in month_col_indices:
+        cell = row[col_idx - 1]  # row is 0-based tuple
+        if cell.value == "Paid":
+            cell.fill = green_fill
+            # Optional: make text bold or change font color
+            # cell.font = Font(color="006100")  # Dark green text
+
+# Save the styled workbook
+wb.save(output_file)
+print(f"\n✅ Excel file saved with green 'Paid' cells: {output_file}")
