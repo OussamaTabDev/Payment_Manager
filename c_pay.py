@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTabWidget, QSpinBox, QDoubleSpinBox, QTextEdit,
                              QMessageBox, QFrame, QScrollArea, QGroupBox,
                              QComboBox, QCheckBox)
-from PyQt6.QtCore import Qt, QMimeData, pyqtSignal, QPropertyAnimation, QEasingCurve
+from PyQt6.QtCore import Qt, QMimeData, pyqtSignal, QPropertyAnimation, QEasingCurve, QSettings
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPalette, QColor, QFont, QIcon
 import pandas as pd
 import openpyxl
@@ -66,7 +66,12 @@ class PaymentTrackerApp(QMainWindow):
         self.kids_df = None
         self.parents_file = None
         self.kids_file = None
-        self.dark_mode = False
+        
+        # Settings
+        self.settings = QSettings("PaymentTracker", "KidsPayments")
+        
+        # Detect system theme
+        self.dark_mode = self.is_system_dark_mode()
         
         # Month columns
         self.month_columns = ['January','February','March','April','May','June',
@@ -75,6 +80,24 @@ class PaymentTrackerApp(QMainWindow):
         self.init_ui()
         self.apply_theme()
         
+    def is_system_dark_mode(self):
+        """Detect if system is using dark mode"""
+        palette = QApplication.palette()
+        bg_color = palette.color(QPalette.ColorRole.Window)
+        # If background is dark (luminance < 128), system is in dark mode
+        return bg_color.lightness() < 128
+
+    def browse_file(self, file_type):
+        """Open a file dialog to select a file and load it."""
+        file_name, _ = QFileDialog.getOpenFileName(
+            self, 
+            f"Select {file_type.title()} File", 
+            "", 
+            "Excel Files (*.xlsx *.xls);;CSV Files (*.csv);;All Files (*)"
+        )
+        if file_name:
+            self.load_file(file_name, file_type)
+            
     def init_ui(self):
         # Central widget
         central_widget = QWidget()
@@ -88,22 +111,22 @@ class PaymentTrackerApp(QMainWindow):
         main_layout.addWidget(header)
         
         # Tab widget
-        tabs = QTabWidget()
-        tabs.setTabPosition(QTabWidget.TabPosition.North)
+        self.tabs = QTabWidget()
+        self.tabs.setTabPosition(QTabWidget.TabPosition.North)
         
         # Tab 1: File Input & Settings
         input_tab = self.create_input_tab()
-        tabs.addTab(input_tab, "📁 Files & Settings")
+        self.tabs.addTab(input_tab, "📁 Files & Settings")
         
         # Tab 2: Process & Results
         results_tab = self.create_results_tab()
-        tabs.addTab(results_tab, "📊 Process & Results")
+        self.tabs.addTab(results_tab, "📊 Process & Results")
         
         # Tab 3: Preview
         preview_tab = self.create_preview_tab()
-        tabs.addTab(preview_tab, "👁️ Data Preview")
+        self.tabs.addTab(preview_tab, "👁️ Data Preview")
         
-        main_layout.addWidget(tabs)
+        main_layout.addWidget(self.tabs)
         
     def create_header(self):
         header_frame = QFrame()
@@ -140,52 +163,56 @@ class PaymentTrackerApp(QMainWindow):
         
         # Files section
         files_group = QGroupBox("📂 Input Files")
-        files_layout = QVBoxLayout()
-        
-        # Parents file
+        files_layout = QHBoxLayout()  # Changed from QVBoxLayout to QHBoxLayout
+
+        # --- Parents file section ---
         parents_layout = QVBoxLayout()
         parents_label = QLabel("<b>Parents Payments File</b> (Excel/CSV)")
         parents_layout.addWidget(parents_label)
-        
+
         self.parents_drop = DragDropLabel("🖱️ Drag & Drop Excel/CSV file here\nor click below to browse")
         self.parents_drop.fileDropped.connect(lambda f: self.load_file(f, 'parents'))
         parents_layout.addWidget(self.parents_drop)
-        
+
         parents_btn_layout = QHBoxLayout()
         parents_browse = QPushButton("📁 Browse Parents File")
         parents_browse.clicked.connect(lambda: self.browse_file('parents'))
         parents_btn_layout.addWidget(parents_browse)
-        
+
         self.parents_status = QLabel("No file loaded")
         self.parents_status.setStyleSheet("color: #666; font-style: italic;")
         parents_btn_layout.addWidget(self.parents_status)
         parents_btn_layout.addStretch()
-        
+
         parents_layout.addLayout(parents_btn_layout)
-        files_layout.addLayout(parents_layout)
-        
-        # Kids file
+        parents_layout.addStretch()  # Optional: pushes content to top if group box is tall
+
+        # --- Kids file section ---
         kids_layout = QVBoxLayout()
         kids_label = QLabel("<b>Kids List File</b> (Excel/CSV)")
         kids_layout.addWidget(kids_label)
-        
+
         self.kids_drop = DragDropLabel("🖱️ Drag & Drop Excel/CSV file here\nor click below to browse")
         self.kids_drop.fileDropped.connect(lambda f: self.load_file(f, 'kids'))
         kids_layout.addWidget(self.kids_drop)
-        
+
         kids_btn_layout = QHBoxLayout()
         kids_browse = QPushButton("📁 Browse Kids File")
         kids_browse.clicked.connect(lambda: self.browse_file('kids'))
         kids_btn_layout.addWidget(kids_browse)
-        
+
         self.kids_status = QLabel("No file loaded")
         self.kids_status.setStyleSheet("color: #666; font-style: italic;")
         kids_btn_layout.addWidget(self.kids_status)
         kids_btn_layout.addStretch()
-        
+
         kids_layout.addLayout(kids_btn_layout)
+        kids_layout.addStretch()  # Optional: pushes content to top
+
+        # Add both columns to the horizontal layout
+        files_layout.addLayout(parents_layout)
         files_layout.addLayout(kids_layout)
-        
+
         files_group.setLayout(files_layout)
         layout.addWidget(files_group)
         
@@ -227,6 +254,72 @@ class PaymentTrackerApp(QMainWindow):
         style_layout.addWidget(self.apply_style_check)
         style_layout.addStretch()
         settings_layout.addLayout(style_layout)
+        
+        # Custom output location
+        location_group = QGroupBox("📍 Output Location")
+        location_layout = QVBoxLayout()
+        
+        # Default location option
+        default_layout = QHBoxLayout()
+        self.use_default_location = QCheckBox("Use default location (current folder)")
+        self.use_default_location.setChecked(True)
+        self.use_default_location.toggled.connect(self.toggle_custom_location)
+        default_layout.addWidget(self.use_default_location)
+        default_layout.addStretch()
+        location_layout.addLayout(default_layout)
+        
+        # Custom location
+        custom_layout = QHBoxLayout()
+        custom_layout.addWidget(QLabel("Custom folder:"))
+        self.custom_location_input = QLineEdit()
+        self.custom_location_input.setPlaceholderText("Select a custom output folder...")
+        self.custom_location_input.setEnabled(False)
+        custom_layout.addWidget(self.custom_location_input)
+        
+        self.browse_location_btn = QPushButton("📁 Browse")
+        self.browse_location_btn.clicked.connect(self.browse_output_location)
+        self.browse_location_btn.setEnabled(False)
+        custom_layout.addWidget(self.browse_location_btn)
+        
+        location_layout.addLayout(custom_layout)
+        location_group.setLayout(location_layout)
+        settings_layout.addWidget(location_group)
+        
+        settings_group.setLayout(settings_layout)
+        layout.addWidget(settings_group)
+        
+        # Process button (large and prominent)
+        process_frame = QFrame()
+        process_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        process_layout = QVBoxLayout(process_frame)
+        
+        self.main_process_btn = QPushButton("PROCESS PAYMENTS")
+        self.main_process_btn.setMinimumHeight(70)
+        self.main_process_btn.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        self.main_process_btn.clicked.connect(self.process_and_auto_save)
+        self.main_process_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                           stop:0 #4CAF50, stop:1 #45a049);
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                           stop:0 #5CBF60, stop:1 #55b059);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                           stop:0 #3d8b40, stop:1 #357a38);
+            }
+        """)
+        process_layout.addWidget(self.main_process_btn)
+        
+        hint = QLabel("💡 This will process payments and automatically save the result")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hint.setStyleSheet("color: #888; font-size: 12px; font-style: italic;")
+        process_layout.addWidget(hint)
+        
+        layout.addWidget(process_frame)
         
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
@@ -277,6 +370,17 @@ class PaymentTrackerApp(QMainWindow):
         layout.addLayout(action_layout)
         
         return widget
+    
+    def toggle_custom_location(self, checked):
+        """Enable/disable custom location inputs"""
+        self.custom_location_input.setEnabled(not checked)
+        self.browse_location_btn.setEnabled(not checked)
+        
+    def browse_output_location(self):
+        """Browse for custom output folder"""
+        folder = QFileDialog.getExistingDirectory(self, "Select Output Folder")
+        if folder:
+            self.custom_location_input.setText(folder)
         
     def create_preview_tab(self):
         widget = QWidget()
@@ -304,7 +408,114 @@ class PaymentTrackerApp(QMainWindow):
         
         return widget
         
-    def browse_file(self, file_type):
+    def toggle_custom_location(self, checked):
+        """Enable/disable custom location inputs"""
+        self.custom_location_input.setEnabled(not checked)
+        self.browse_location_btn.setEnabled(not checked)
+        
+    def browse_output_location(self):
+        """Browse for custom output folder"""
+        folder = QFileDialog.getExistingDirectory(self, "Select Output Folder")
+        if folder:
+            self.custom_location_input.setText(folder)
+            
+    def process_and_auto_save(self):
+        """Process payments and automatically save, then switch to results tab"""
+        if self.parents_df is None or self.kids_df is None:
+            QMessageBox.warning(self, "Missing Data", "Please load both parent and kids files first!")
+            return
+            
+        try:
+            # Switch to results tab
+            self.tabs.setCurrentIndex(1)
+            
+            # Process payments
+            self.results_text.clear()
+            self.results_text.append("🔄 Starting payment processing...\n")
+            
+            monthly_fee = self.fee_input.value()
+            
+            # Find parent-kid relationships
+            self.results_text.append("👨‍👩‍👧‍👦 Finding parent-kid relationships...")
+            parent_kid_map = self.find_kids_of_parents(self.parents_df, self.kids_df)
+            
+            for parent, kids in parent_kid_map.items():
+                self.results_text.append(f"  • {parent} → {', '.join(kids)}")
+            self.results_text.append("")
+            
+            # Calculate months paid
+            self.results_text.append("💰 Calculating payments...")
+            kids_months_paid = self.calculate_months_paid(self.parents_df, parent_kid_map, monthly_fee)
+            
+            for kid, months in kids_months_paid.items():
+                self.results_text.append(f"  • {kid}: {months} months paid")
+            self.results_text.append("")
+            
+            # Update dataframe
+            self.results_text.append("📝 Updating kids payment records...")
+            self.updated_kids_df = self.update_kids_months_paid(kids_months_paid, self.kids_df.copy())
+            
+            self.results_text.append("\n✅ Processing complete!")
+            
+            # Auto-save
+            self.results_text.append("\n💾 Auto-saving results...")
+            self.auto_save_results()
+            
+            self.save_btn.setEnabled(True)
+            self.update_preview()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Processing Error", f"Error during processing:\n{str(e)}")
+            self.results_text.append(f"\n❌ Error: {str(e)}")
+            
+    def auto_save_results(self):
+        """Automatically save results to specified location"""
+        try:
+            # Determine output path
+            output_filename = self.output_input.text()
+            
+            if self.use_default_location.isChecked():
+                output_file = output_filename
+            else:
+                custom_folder = self.custom_location_input.text()
+                if not custom_folder:
+                    raise Exception("Custom location not specified")
+                output_file = os.path.join(custom_folder, output_filename)
+            
+            # Save to Excel
+            self.updated_kids_df.to_excel(output_file, index=False)
+            
+            # Apply styling if checked
+            if self.apply_style_check.isChecked():
+                wb = openpyxl.load_workbook(output_file)
+                ws = wb.active
+                
+                green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+                
+                headers = [cell.value for cell in ws[1]]
+                month_col_indices = [idx for idx, h in enumerate(headers, start=1) if h in self.month_columns]
+                
+                for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+                    for col_idx in month_col_indices:
+                        cell = row[col_idx - 1]
+                        if cell.value == "Paid":
+                            cell.fill = green_fill
+                            
+                wb.save(output_file)
+            
+            self.results_text.append(f"✅ File saved successfully to:\n   {os.path.abspath(output_file)}")
+            self.open_btn.setEnabled(True)
+            
+            # Show success message
+            QMessageBox.information(
+                self, 
+                "Success! 🎉", 
+                f"Processing complete!\n\nFile saved to:\n{os.path.abspath(output_file)}"
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", f"Failed to save file:\n{str(e)}")
+            self.results_text.append(f"\n❌ Save Error: {str(e)}")
         file_name, _ = QFileDialog.getOpenFileName(
             self, f"Select {file_type.title()} File", 
             "", "Excel Files (*.xlsx *.xls);;CSV Files (*.csv);;All Files (*)"
@@ -336,6 +547,104 @@ class PaymentTrackerApp(QMainWindow):
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load file:\n{str(e)}")
+    
+    def process_and_auto_save(self):
+        """Process payments and automatically save, then switch to results tab"""
+        if self.parents_df is None or self.kids_df is None:
+            QMessageBox.warning(self, "Missing Data", "Please load both parent and kids files first!")
+            return
+            
+        try:
+            # Switch to results tab
+            self.tabs.setCurrentIndex(1)
+            
+            # Process payments
+            self.results_text.clear()
+            self.results_text.append("🔄 Starting payment processing...\n")
+            
+            monthly_fee = self.fee_input.value()
+            
+            # Find parent-kid relationships
+            self.results_text.append("👨‍👩‍👧‍👦 Finding parent-kid relationships...")
+            parent_kid_map = self.find_kids_of_parents(self.parents_df, self.kids_df)
+            
+            for parent, kids in parent_kid_map.items():
+                self.results_text.append(f"  • {parent} → {', '.join(kids)}")
+            self.results_text.append("")
+            
+            # Calculate months paid
+            self.results_text.append("💰 Calculating payments...")
+            kids_months_paid = self.calculate_months_paid(self.parents_df, parent_kid_map, monthly_fee)
+            
+            for kid, months in kids_months_paid.items():
+                self.results_text.append(f"  • {kid}: {months} months paid")
+            self.results_text.append("")
+            
+            # Update dataframe
+            self.results_text.append("📝 Updating kids payment records...")
+            self.updated_kids_df = self.update_kids_months_paid(kids_months_paid, self.kids_df.copy())
+            
+            self.results_text.append("\n✅ Processing complete!")
+            
+            # Auto-save
+            self.results_text.append("\n💾 Auto-saving results...")
+            self.auto_save_results()
+            
+            self.save_btn.setEnabled(True)
+            self.update_preview()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Processing Error", f"Error during processing:\n{str(e)}")
+            self.results_text.append(f"\n❌ Error: {str(e)}")
+            
+    def auto_save_results(self):
+        """Automatically save results to specified location"""
+        try:
+            # Determine output path
+            output_filename = self.output_input.text()
+            
+            if self.use_default_location.isChecked():
+                output_file = output_filename
+            else:
+                custom_folder = self.custom_location_input.text()
+                if not custom_folder:
+                    raise Exception("Custom location not specified")
+                output_file = os.path.join(custom_folder, output_filename)
+            
+            # Save to Excel
+            self.updated_kids_df.to_excel(output_file, index=False)
+            
+            # Apply styling if checked
+            if self.apply_style_check.isChecked():
+                wb = openpyxl.load_workbook(output_file)
+                ws = wb.active
+                
+                green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+                
+                headers = [cell.value for cell in ws[1]]
+                month_col_indices = [idx for idx, h in enumerate(headers, start=1) if h in self.month_columns]
+                
+                for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+                    for col_idx in month_col_indices:
+                        cell = row[col_idx - 1]
+                        if cell.value == "Paid":
+                            cell.fill = green_fill
+                            
+                wb.save(output_file)
+            
+            self.results_text.append(f"✅ File saved successfully to:\n   {os.path.abspath(output_file)}")
+            self.open_btn.setEnabled(True)
+            
+            # Show success message
+            QMessageBox.information(
+                self, 
+                "Success! 🎉", 
+                f"Processing complete!\n\nFile saved to:\n{os.path.abspath(output_file)}"
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", f"Failed to save file:\n{str(e)}")
+            self.results_text.append(f"\n❌ Save Error: {str(e)}")
             
     def process_payments(self):
         if self.parents_df is None or self.kids_df is None:
@@ -479,9 +788,20 @@ class PaymentTrackerApp(QMainWindow):
             QMessageBox.critical(self, "Save Error", f"Failed to save file:\n{str(e)}")
             
     def open_output_folder(self):
-        output_file = self.output_input.text()
-        folder = os.path.dirname(os.path.abspath(output_file)) if os.path.dirname(output_file) else os.getcwd()
-        os.startfile(folder) if sys.platform == "win32" else os.system(f'open "{folder}"')
+        """Open the folder containing the output file"""
+        output_filename = self.output_input.text()
+        
+        if self.use_default_location.isChecked():
+            folder = os.path.dirname(os.path.abspath(output_filename)) if os.path.dirname(output_filename) else os.getcwd()
+        else:
+            folder = self.custom_location_input.text() or os.getcwd()
+            
+        if sys.platform == "win32":
+            os.startfile(folder)
+        elif sys.platform == "darwin":
+            os.system(f'open "{folder}"')
+        else:
+            os.system(f'xdg-open "{folder}"')
         
     def update_preview(self):
         selection = self.preview_combo.currentText()
@@ -504,7 +824,8 @@ class PaymentTrackerApp(QMainWindow):
                     item = QTableWidgetItem(str(df.iloc[i, j]))
                     if hasattr(self, 'updated_kids_df') and selection == "Updated Kids List":
                         if str(df.iloc[i, j]) == "Paid":
-                            item.setBackground(QColor("#C6EFCE"))
+                            item.setBackground(QColor("#005C12"))
+                            # item.setBackground(QColor("#C6EFCE"))
                     self.preview_table.setItem(i, j, item)
                     
             self.preview_table.resizeColumnsToContents()
