@@ -439,13 +439,17 @@ class PaymentTrackerApp(QMainWindow):
             self.results_text.append("👨‍👩‍👧‍👦 Finding parent-kid relationships...")
             parent_kid_map = self.find_kids_of_parents(self.parents_df, self.kids_df)
             
-            for parent, kids in parent_kid_map.items():
+            # Listing kids from less paid months to more 
+            listed_parent_kid_map = {}
+            listed_parent_kid_map = self.listing_parent_kid_map(parent_kid_map , self.kids_df )
+
+            for parent, kids in listed_parent_kid_map.items():
                 self.results_text.append(f"  • {parent} → {', '.join(kids)}")
             self.results_text.append("")
             
             # Calculate months paid
             self.results_text.append("💰 Calculating payments...")
-            kids_months_paid = self.calculate_months_paid(self.parents_df, parent_kid_map, monthly_fee)
+            kids_months_paid = self.calculate_months_paid(self.parents_df, listed_parent_kid_map, monthly_fee)
             
             for kid, months in kids_months_paid.items():
                 self.results_text.append(f"  • {kid}: {months} months paid")
@@ -467,7 +471,8 @@ class PaymentTrackerApp(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Processing Error", f"Error during processing:\n{str(e)}")
             self.results_text.append(f"\n❌ Error: {str(e)}")
-            
+
+
     def auto_save_results(self):
         """Automatically save results to specified location"""
         try:
@@ -568,13 +573,17 @@ class PaymentTrackerApp(QMainWindow):
             self.results_text.append("👨‍👩‍👧‍👦 Finding parent-kid relationships...")
             parent_kid_map = self.find_kids_of_parents(self.parents_df, self.kids_df)
             
-            for parent, kids in parent_kid_map.items():
+            # Listing kids from less paid months to more 
+            listed_parent_kid_map = {}
+            listed_parent_kid_map = self.listing_parent_kid_map(parent_kid_map , self.kids_df )
+
+            for parent, kids in listed_parent_kid_map.items():
                 self.results_text.append(f"  • {parent} → {', '.join(kids)}")
             self.results_text.append("")
             
             # Calculate months paid
             self.results_text.append("💰 Calculating payments...")
-            kids_months_paid = self.calculate_months_paid(self.parents_df, parent_kid_map, monthly_fee)
+            kids_months_paid = self.calculate_months_paid(self.parents_df, listed_parent_kid_map, monthly_fee)
             
             for kid, months in kids_months_paid.items():
                 self.results_text.append(f"  • {kid}: {months} months paid")
@@ -693,12 +702,32 @@ class PaymentTrackerApp(QMainWindow):
         
         for parent in distinct_parents:
             last_name_parent = parent.split()[-1]
-            matched_kids = [kid for kid in distinct_kids if last_name_parent == kid.split()[-1]]
+            matched_kids = [kid for kid in distinct_kids if last_name_parent.lower() == kid.split()[-1].lower()]
+            # matched_kids = [kid for kid in distinct_kids if last_name_parent == kid.split()[-1]]
             if matched_kids:
                 parent_kid_map[parent] = matched_kids
                 
         return parent_kid_map
+
+    def listing_parent_kid_map(self, parent_kid_map, kids_df):
+        listed_parent_kid_map = {}
         
+        for parent, kids in parent_kid_map.items():
+            kids_months = {}
+            for kid in kids:
+                kid_row = kids_df[kids_df['kid_name'] == kid]
+                if not kid_row.empty:
+                    paid_months = sum(1 for month in self.month_columns if str(kid_row.iloc[0][month]).strip().lower() == 'paid')
+                    kids_months[kid] = paid_months
+                else:
+                    kids_months[kid] = 0
+                    
+            # Sort kids by months paid (ascending)
+            sorted_kids = sorted(kids_months.items(), key=lambda x: x[1])
+            listed_parent_kid_map[parent] = [kid for kid, _ in sorted_kids]
+            
+        return listed_parent_kid_map
+
     def getting_amount_from_string(self, amount_str):
         try:
             amount = int(''.join(filter(str.isdigit, str(amount_str))))
