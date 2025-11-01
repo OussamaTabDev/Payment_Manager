@@ -36,12 +36,7 @@ kids_df.columns = [
 
 backup_kids_df = kids_df.copy()
 
-# limiting row of kids_df
-# infos
-monthly_fee_per_kid_A = 25.0  # Example monthly fee per kid 25 for A5,.. and 15 for B0,...
-monthly_fee_per_kid_B = 15.0  # Example monthly fee per kid 25 for A5,.. and 15 for B0,...
-A5_names = ["A5","A6","A7","A8","A9","A10","A11","A12"] # premair school, collige names 
-B0_names = ["B0","B1","B2","B3","G1","G2"] # before primary school names , Sunday school
+
 
 print("Data loaded successfully.")
 
@@ -211,48 +206,186 @@ data_map =  get_parent_kid_map(find_kids_of_parrents(parents_df, kids_df))
 
 def getting_mount_from_string(amount_str):
     try:
+        print(f"Extracting amount from string: {amount_str}")
         amount = int(''.join(filter(str.isdigit, amount_str)))
         return amount
     except:
         return 0.0
 
-def calculate_months_paid(parents_df = parents_df):
-    parents_mount = dict(zip(parents_df['parents_name'], parents_df['Amount'].apply(getting_mount_from_string)))
+def calculate_months_paid(parents_df=parents_df):
+    # Ensure 'Amount' is numeric
+    parents_df['Amount'] = pd.to_numeric(parents_df['Amount'], errors='coerce')
+    
+    # Skip the first ROW (index 0)
+    df_filtered = parents_df.iloc[1:].copy()
+    
+    parents_mount = dict(zip(df_filtered['parent_name'], df_filtered['Amount']))
     print(parents_mount)
     print("Calculating months paid for each kid...")
     return parents_mount
 
-# print("Finding distinct parents...")
-# parent_kid_map = find_kids_of_parrents(parents_df, kids_df)
 
-# print("Print parents to their kids:")
-# for parent, kids in parent_kid_map.items():
-#     print(f"Parent: {parent} -> Kids: {', '.join(kids)}")
-
-# calculate_months_paid(parents_df , parent_kid_map , monthly_fee_per_kid )
+amount_map = calculate_months_paid(parents_df)
 
 
+# limiting row of kids_df
+# infos
+monthly_fee_per_kid_A = 25.0  # Example monthly fee per kid 25 for A5,.. and 15 for B0,...
+monthly_fee_per_kid_B = 15.0  # Example monthly fee per kid 25 for A5,.. and 15 for B0,...
+A5_names = ["A5","A6","A7","A8","A9","A10","A11","A12"] # premair school, collige names 
+B0_names = ["B0","B1","B2","B3","G1","G2"] # before primary school names , Sunday school
+
+def get_monthly_fee_for_class(class_name):
+    if class_name in A5_names:
+        return monthly_fee_per_kid_A
+    
+    if class_name in B0_names:
+        return monthly_fee_per_kid_B
+    
+    return monthly_fee_per_kid_A  # default to A fee
 
 
-# import pandas as pd
 
-# Load the Excel file
-# kids_df = pd.read_excel("kids_list.xlsx")
+def determine_status_and_color(months_paid, monthly_fee, allocated_amount, class_name):
+    # Handle edge cases first
+    if monthly_fee <= 0:
+        return "Not yet registered", "#ffffff"  # white or undefined
 
-# # Split the first 3 rows
-# first_rows = kids_df.iloc[:3]   # first 3 rows
-# rest_rows = kids_df.iloc[3:]    # all rows after the first 3
+    # Check common patterns
+    if allocated_amount == 0:
+        return "Nothing paid.", "#ff0000"
+    
+    # Check if fully paid (at least 1 full month)
+    if months_paid >= 1.0:
+        return "Fully paid.", "#92d050"
+    
+    # Special case: G1/G2 paying €15 instead of €25 → assuming A5 = G1/G2
+    if class_name.strip() == 'A5' and abs(allocated_amount - 15) < 0.01:
+        return "G1 and G2 paid €15 instead of €25.", "#ffff00"
 
-# # Later, to merge them back:
-# merged_df = pd.concat([first_rows, rest_rows], ignore_index=True)
+    # Check partial transfers: only 10, 15, or 20 instead of 25
+    if class_name.strip() == 'A5':
+        if allocated_amount in [10, 15, 20]:
+            return "Transfers only €10, €15, or €20 instead of €25.", "#c65911"
+    elif class_name.strip() == 'B0':
+        if allocated_amount in [10, 15]:  # since full is 20
+            return "Transfers only €10 or €15 instead of €20.", "#c65911"
 
-# # Display
-# print("First 3 rows:")
-# print(first_rows)
+    # Default partial payment
+    return f"Partial payment: {allocated_amount:.2f}€ ({months_paid:.2f} months)", "#ffc000"
 
-# print("\nRest of the rows:")
-# print(rest_rows.head())
 
-# print("\nMerged again:")
-# print(merged_df.head())
 
+'''
+#c65911 :Transfers only €10, €15, or €20 instead of €25.
+#ff0000 :Nothing paid.
+#92d050 :Fully paid.
+#ffff00 : G1 and G2 paid €15 instead of €25.
+#f4b084 :Unenrolled kids.
+# '''
+
+def calculate_kid_payments(data_map, amount_map):
+    kid_payment_status = {}
+
+    for parent, kids in data_map.items():
+        total_amount = float(amount_map.get(parent, 0.0))
+        #convert to float
+        total_amount = total_amount if isinstance(total_amount, float) else 0
+        print(f"\nParent: {parent}, Total Amount Paid: €{total_amount}")
+
+        # Get monthly fees for all kids
+        kid_list = list(kids.items())  # preserve order
+        kid_fees = {}
+        total_monthly_fee = 0.0
+        for kid, cls in kid_list:
+            fee = get_monthly_fee_for_class(cls)
+            kid_fees[kid] = fee
+            total_monthly_fee += fee
+
+        print(f"Total Monthly Fee for {parent}: €{total_monthly_fee}")
+
+        # Handle zero fee case
+        if total_monthly_fee <= 0:
+            for kid_name, class_name in kid_list:
+                status_msg, color = determine_status_and_color(0, 0, 0, class_name)
+                kid_payment_status[kid_name] = {
+                    'parent': parent,
+                    'class': class_name.strip(),
+                    'monthly_fee': 0.0,
+                    'allocated_amount': 0.0,
+                    'months_paid': 0.0,
+                    'status': status_msg,
+                    'color': color,
+                    'extras': 0.0,
+                    'extras_color': color
+                }
+            continue
+
+        # Step 1: Compute how many FULL months are covered in total
+        print(f"  → Total Amount: €{total_amount}, Total Monthly Fee: €{total_monthly_fee}")
+        full_months_total = int(total_amount // total_monthly_fee)
+        remainder = total_amount - (full_months_total * total_monthly_fee)
+
+        # Step 2: Base allocation = full_months_total * individual fee
+        base_allocations = {
+            kid_name: full_months_total * kid_fees[kid_name]
+            for kid_name, _ in kid_list
+        }
+
+        # Step 3: Assign entire remainder to the FIRST child only
+        allocations = {}
+        for i, (kid_name, _) in enumerate(kid_list):
+            if i == 0:
+                allocations[kid_name] = base_allocations[kid_name] + remainder
+            else:
+                allocations[kid_name] = base_allocations[kid_name]
+
+        # Step 4: Build result per kid
+        for kid_name, class_name in kid_list:
+            monthly_fee = kid_fees[kid_name]
+            allocated = allocations[kid_name]
+
+            # Compute months paid (for status logic)
+            months_paid = allocated / monthly_fee if monthly_fee > 0 else 0.0
+
+            # Determine main status and color
+            status_msg, color = determine_status_and_color(
+                months_paid, monthly_fee, allocated, class_name
+            )
+
+            # Compute extras (amount beyond last full month)
+            if monthly_fee > 0:
+                full_months_for_kid = int(allocated // monthly_fee)
+                extras = allocated - (full_months_for_kid * monthly_fee)
+                # Determine extras color: orange if partial, green if zero
+                extras_color = "#ffc000" if extras > 1e-2 else "#92d050"
+                extras = round(extras, 2)
+            else:
+                extras = 0.0
+                extras_color = color
+
+            # Final rounding
+            allocated = round(allocated, 2)
+            months_paid = round(months_paid, 2)
+            monthly_fee = round(monthly_fee, 2)
+
+            kid_payment_status[kid_name] = {
+                'parent': parent,
+                'class': class_name.strip(),
+                'monthly_fee': monthly_fee,
+                'allocated_amount': allocated,
+                'months_paid': months_paid,
+                'status': status_msg,
+                'color': color,
+                'extras': extras,
+                'extras_color': extras_color
+            }
+
+            print(f"  → {kid_name}: €{allocated:.2f} allocated → {months_paid:.2f} months → {status_msg}")
+            if extras > 0:
+                print(f"      (Extras: €{extras:.2f})")
+
+    return kid_payment_status
+
+print("\nCalculating kid payment statuses...-------------------------")
+print(calculate_kid_payments(data_map, amount_map))
