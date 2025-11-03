@@ -1,7 +1,8 @@
 import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill, Color
+from openpyxl.styles import Font, Alignment, PatternFill, Color ,   Border, Side
 from openpyxl import load_workbook
 import pandas as pd
+
 from copy import copy
 # Load the Excel file (or CSV)
 parents_df = pd.read_excel("parents_payments.xlsx" , header=None,)
@@ -537,8 +538,6 @@ def calculate_kid_payments(data_map, amount_map, kid_status):
 print("\nCalculating kid payment statuses...-------------------------")
 calculate_kid_payments(data_map, amount_map , kids_status )
 
-
-
 def copy_cell_format(source_cell, target_cell):
     """Copy all formatting from source cell to target cell"""
     if source_cell.has_style:
@@ -587,15 +586,60 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
         for _ in range(months_to_add):
             ws.insert_cols(month_end_col + 1)
         
-        # Update headers for new month columns
+        # Find where 2026 starts (after the 24 months, which is 9_next to 8_next)
+        year_2026_start_col = month_start_col + 16   # After 24 months
+        
+        # Merge cells for "2026" header (row 1)
+        ws.merge_cells(start_row=2, start_column=year_2026_start_col, 
+                      end_row=2, end_column=year_2026_start_col + months_to_add )
+        
+        # Set "2026" text and copy style from "2025" cell
+        year_2026_cell = ws.cell(row=2, column=year_2026_start_col)
+        year_2026_cell.value = "2026"
+        
+        # Copy format from "2025" header
+        year_2025_cell = ws.cell(row=2, column=month_start_col + 4)  # Where 2025 starts
+        # copy_cell_format(year_2025_cell, year_2026_cell)
+        # outline the merged cell
+        bold_border = Border(
+            left=Side(style='thin', color='000000'),
+            right=Side(style='thin', color='000000'),
+            top=Side(style='thin', color='000000'),
+            bottom=Side(style='thin', color='000000')
+        )
+        year_2026_cell.border = bold_border
+        
+        # Update headers for new month columns (row 2 and row 3)
         for i, month in enumerate(months_extended):
             col_idx = month_start_col + i
+            
+            # Row 2: Month numbers (9, 10, 11, 12, 1, 2, etc.)
+            month_num_cell = ws.cell(row=3, column=col_idx)
+            
+            # Row 3: Month values (25, 25, 25, etc.)
             header_cell = ws.cell(row=3, column=col_idx)
-            header_cell.value = month
-            # Copy format from the first month header
+            
+            # For new columns (beyond original), copy format and set values
             if i >= original_month_count:
-                source_header = ws.cell(row=3, column=month_start_col)
+                # Get the month number (remove "_next" suffix for display)
+                display_month = month.replace('_next', '') 
+                print(f"Setting new month column {col_idx} for month '{month}' as '{display_month}'")
+                month_num_cell.value = display_month
+                header_cell.value = display_month # was month
+                
+                # Copy format from corresponding month in year 1
+                # e.g., 9_next copies from 9, 10_next from 10, etc.
+                source_col_offset = i % 12  # Cycle through 12 months
+                source_col = month_start_col + source_col_offset
+                
+                source_month_num = ws.cell(row=2, column=source_col)
+                source_header = ws.cell(row=3, column=source_col)
+                
+                copy_cell_format(source_month_num, month_num_cell)
                 copy_cell_format(source_header, header_cell)
+    
+
+    
     
     # Get kids status info
     kids_status_dict = {}
@@ -607,15 +651,64 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
             'last_color': row['last_color']
         }
     
+
+    # Update parent names and add phone numbers
+    # Find the parent_name column (should be column 3)
+    parent_name_col = 3
+    
+    # Get the combined kids_parents data with phone numbers
+    kids_parents_combined = find_kids_of_parrents(parents_df, kids_df)
+    
+    # Create a mapping of kid_id to parent info
+    kid_to_parent_info = {}
+    for _, row in kids_parents_combined.iterrows():
+        kid_to_parent_info[row['kid_id']] = {
+            'parent_name': row['parent_name'],
+            'phone_number': row.get('phone_number', '')
+        }
+    
+    # Insert a new column for phone numbers after parent_name (before months)
+    # This will be column 4, and months will shift to column 5
+    last_colomn = ws.max_column
+    ws.insert_cols(last_colomn + 1)
+    
+    # Update the header for phone number column
+    phone_header_cell = ws.cell(row=3, column=last_colomn + 1)
+    phone_header_cell.value = "Phone Number"
+    # Copy format from parent_name header
+    parent_header_cell = ws.cell(row=3, column=parent_name_col)
+    copy_cell_format(parent_header_cell, phone_header_cell)
+    
+    # Also update row 1 and row 2 for the phone number column
+    # phone_row1_cell = ws.cell(row=3, column=last_colomn + 1)
+    phone_row2_cell = ws.cell(row=3, column=last_colomn + 1)
+    # copy_cell_format(ws.cell(row=3, column=parent_name_col), phone_row1_cell)
+    copy_cell_format(ws.cell(row=2, column=parent_name_col), phone_row2_cell)
+
     # Process each kid row (starting from row 4)
     start_row = 4
     for idx, kid_row in kids_df.iterrows():
         excel_row = start_row + idx
         kid_name = kid_row['kid_name']
-        
+        kid_id = kid_row['kid_id']
+
         if pd.isna(kid_name):
             continue
-        
+
+        # Update parent name and add phone number
+        if kid_id in kid_to_parent_info:
+            parent_info = kid_to_parent_info[kid_id]
+            
+            # Update parent name (column 3)
+            parent_cell = ws.cell(row=excel_row, column=parent_name_col)
+            parent_cell.value = parent_info['parent_name'] if parent_info['parent_name'] != 'nan' else parent_cell.value
+            
+            # Add phone number (column 4)
+            phone_cell = ws.cell(row=excel_row, column=last_colomn + 1)
+            phone_cell.value = parent_info['phone_number']
+            # Copy format from parent cell
+            copy_cell_format(parent_cell, phone_cell)
+
         # Get payment status for this kid
         payment_info = kid_payment_status.get(kid_name, {})
         
@@ -638,6 +731,7 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
         # Determine how many new months to fill based on payment
         months_paid = payment_info.get('months_paid', 0.0)
         full_months_paid = int(months_paid)
+        monthly_fee = payment_info.get('monthly_fee', 0.0)
         
         # Determine the color for new entries
         new_color = payment_info.get('color', 'FF595959')
@@ -659,27 +753,40 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
             
             # Fill new months based on payment
             elif i <= last_month_idx + full_months_paid:
-                # Mark as paid
-                cell.value = "✓" if full_months_paid > 0 else ""
+                # Put the monthly fee price
+                if monthly_fee > 0:
+                    cell.value = int(monthly_fee) if monthly_fee == int(monthly_fee) else monthly_fee
+                else:
+                    cell.value = ""
+                
+                # Copy style from reference cell
+                copy_cell_format(reference_month_cell, cell)
+                
+                # Apply payment status color
                 cell.fill = PatternFill(start_color=new_color.replace("#", ""), 
                                        end_color=new_color.replace("#", ""), 
                                        fill_type="solid")
-                cell.alignment = Alignment(horizontal='center', vertical='center')
             
             # Handle extras in the next month
             elif i == last_month_idx + full_months_paid + 1 and extras > 0:
-                cell.value = f"{extras}€"
+                cell.value = extras if extras != int(extras) else int(extras)
+                
+                # Copy style from reference cell
+                copy_cell_format(reference_month_cell, cell)
+                
+                # Apply extras color
                 cell.fill = PatternFill(start_color=extras_color.replace("#", ""), 
                                        end_color=extras_color.replace("#", ""), 
                                        fill_type="solid")
-                cell.alignment = Alignment(horizontal='center', vertical='center')
             
             else:
-                # Leave empty for future months
-                cell.value = ""
-                cell.fill = PatternFill(fill_type=None)
+                # Mark ONLY the first unpaid month in red, then stop
+                if i == last_month_idx + full_months_paid + 1 and extras == 0:
+                    cell.fill = PatternFill(start_color="FFFF0000",
+                                        end_color="FFFF0000",
+                                        fill_type="solid")
         
-        print(f"✅ Updated {kid_name}: {full_months_paid} months paid, extras: €{extras}")
+        print(f"✅ Updated {kid_name}: {full_months_paid} months paid (€{monthly_fee}/month), extras: €{extras}")
     
     # Save the updated workbook
     wb.save(output_file)
