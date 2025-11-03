@@ -274,7 +274,7 @@ def get_last_kid_update(sheet, df, row_idx):
         # Skip red cells (FFFF0000) and continue looking backwards
         if color == "FFFF0000":
             continue
-
+        
         # Check if we have meaningful content
         if text or (color and color not in ["00000000", "None", ""]):
             if "Values must be of type <class 'int'>" in str(color):
@@ -625,7 +625,7 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
                 display_month = month.replace('_next', '') 
                 print(f"Setting new month column {col_idx} for month '{month}' as '{display_month}'")
                 month_num_cell.value = display_month
-                header_cell.value = display_month # was month
+                header_cell.value = display_month # was month need fix
                 
                 # Copy format from corresponding month in year 1
                 # e.g., 9_next copies from 9, 10_next from 10, etc.
@@ -639,8 +639,6 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
                 copy_cell_format(source_header, header_cell)
     
 
-    
-    
     # Get kids status info
     kids_status_dict = {}
     for _, row in kids_status.iterrows():
@@ -721,7 +719,15 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
         last_month = last_status.get('last_month')
         last_color = last_status.get('last_color')
         last_text = last_status.get('last_text')
-        
+        # After retrieving last_status:
+        last_color = (last_status.get('last_color') or "").upper().replace("#", "")
+        is_not_registered = last_color in ["FF595959", "595959"]
+
+        # If kid is not registered and no payment, leave all future months untouched
+        if is_not_registered and (payment_info.get('allocated_amount', 0) == 0):
+            print(f"⚠️ Skipping updates for unregistered kid with no payment: {kid_name}")
+            continue  # Skip updating this row entirely
+
         # Find the index of the last updated month
         try:
             last_month_idx = months_extended.index(last_month) if last_month else -1
