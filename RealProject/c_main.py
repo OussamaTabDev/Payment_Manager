@@ -539,9 +539,6 @@ calculate_kid_payments(data_map, amount_map , kids_status )
 
 
 
-# [Your existing code here - all imports and functions]
-# ... (keep all your existing code above)
-
 def copy_cell_format(source_cell, target_cell):
     """Copy all formatting from source cell to target cell"""
     if source_cell.has_style:
@@ -582,6 +579,9 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
     month_start_col = 4  # Column D (1-indexed)
     month_end_col = month_start_col + original_month_count - 1
     
+    # Get a reference cell from existing months to copy style from
+    reference_month_cell = ws.cell(row=4, column=month_start_col)
+    
     # Insert new columns after the existing month columns
     if months_to_add > 0:
         for _ in range(months_to_add):
@@ -592,10 +592,10 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
             col_idx = month_start_col + i
             header_cell = ws.cell(row=3, column=col_idx)
             header_cell.value = month
-            # Copy format from adjacent month header
-            if i < original_month_count:
-                source_cell = ws.cell(row=3, column=month_start_col + i)
-                copy_cell_format(source_cell, header_cell)
+            # Copy format from the first month header
+            if i >= original_month_count:
+                source_header = ws.cell(row=3, column=month_start_col)
+                copy_cell_format(source_header, header_cell)
     
     # Get kids status info
     kids_status_dict = {}
