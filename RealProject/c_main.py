@@ -27,12 +27,24 @@ parents_df.columns = [
     "Currency",                  # Waehrung
     "Info"                       # Info
 ]
+wb = load_workbook("kids_list.xlsx")
+ws = wb.active
+last_colomn = ws.max_column
 
-months = [
-    '9', '10', '11', '12', '1', '2', '3',
-    '4', '5', '6', '7', '8','9_next',
-    '10_next', '11_next', '12_next', '1_next'
+months =[]
+if last_colomn > 22:
+    months = [
+        '9', '10', '11', '12', '1', '2', '3',
+        '4', '5', '6', '7', '8','9_next',
+        '10_next', '11_next', '12_next', '1_next'
+        ]
+else:
+    months = [
+        '9', '10', '11', '12', '1', '2', '3', '4', '5', '6', '7', '8',  # Year 1
+        '9_next', '10_next', '11_next', '12_next', '1_next', '2_next', 
+        '3_next', '4_next', '5_next', '6_next', '7_next', '8_next'  # Year 2
     ]
+
 kids_df.columns = [
     "kid_id",'kid_name', 'parent_name', *months,
     'class' , 'priceOn','book_taken','nabil_liste'
@@ -74,7 +86,7 @@ else:
 
 
 
-# kids_df.to_excel("kids_parents_from_kids_debug.xlsx", index=False)
+# all of them
 # find parents names in kids full names
 def find_kids_of_parrents(parents_df, kids_df):
     #step 1: find distinct parents names
@@ -125,8 +137,6 @@ def find_kids_of_parrents(parents_df, kids_df):
                 if kid_name and kid_name.split() and last_name_parent.lower() == kid_name.split()[0].lower():
                     matched_parent = parent
                     break
-
-
 
         # Update the main DataFrame if a match was found
         if matched_parent:
@@ -188,6 +198,7 @@ def find_kids_of_parrents(parents_df, kids_df):
     # # put each parents name as key and value as list of kids names that contain the parents name, and it's class
     return combined
 
+# all of them
 def get_parent_kid_map(combined_df):
     parent_kid_map = {}
 
@@ -241,6 +252,8 @@ monthly_fee_per_kid_A = 25.0  # Example monthly fee per kid 25 for A5,.. and 15 
 monthly_fee_per_kid_B = 15.0  # Example monthly fee per kid 25 for A5,.. and 15 for B0,...
 A5_names = ["A5","A6","A7","A8","A9","A10","A11","A12","G2"] # premair school, collige names 
 B0_names = ["B0","B1","B2","B3","G1","G2"] # before primary school names , Sunday school
+
+# all of the till here 
 
 from openpyxl.styles import Color
 
@@ -322,7 +335,7 @@ def get_all_kids_last_updates(file_path):
     return pd.DataFrame(results)
 
 kids_status = get_all_kids_last_updates("kids_list.xlsx")
-kids_status.to_excel("kids_last_updates_debug2.xlsx", index=False)
+# kids_status.to_excel("kids_last_updates_debug2.xlsx", index=False)
 
 
 def get_monthly_fee_for_class(class_name):
@@ -536,7 +549,7 @@ def calculate_kid_payments(data_map, amount_map, kid_status):
     return kid_payment_status
 
 print("\nCalculating kid payment statuses...-------------------------")
-calculate_kid_payments(data_map, amount_map , kids_status )
+# calculate_kid_payments(data_map, amount_map , kids_status )
 
 def copy_cell_format(source_cell, target_cell):
     """Copy all formatting from source cell to target cell"""
@@ -563,12 +576,12 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
     Update the Excel file with new payment statuses while preserving formatting
     """
     # Load the original workbook to preserve formatting
-    wb = load_workbook("kids_list.xlsx")
-    ws = wb.active
+    
     
     # Extend months to 2 years
-    months_extended = extend_months_to_2years()
     
+    months_extended = extend_months_to_2years()
+
     # Calculate how many new month columns to add
     original_month_count = len(months)
     new_month_count = len(months_extended)
@@ -580,7 +593,7 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
     
     # Get a reference cell from existing months to copy style from
     reference_month_cell = ws.cell(row=4, column=month_start_col)
-    
+
     # Insert new columns after the existing month columns
     if months_to_add > 0:
         for _ in range(months_to_add):
@@ -591,7 +604,7 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
         
         # Merge cells for "2026" header (row 1)
         ws.merge_cells(start_row=2, start_column=year_2026_start_col, 
-                      end_row=2, end_column=year_2026_start_col + months_to_add )
+                    end_row=2, end_column=year_2026_start_col + months_to_add )
         
         # Set "2026" text and copy style from "2025" cell
         year_2026_cell = ws.cell(row=2, column=year_2026_start_col)
