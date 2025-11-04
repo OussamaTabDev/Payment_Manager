@@ -5,9 +5,8 @@ import pandas as pd
 
 from copy import copy
 # Load the Excel file (or CSV)
-PARENT_FILE = "parents_payments.xlsx"
+parents_df = pd.read_excel("parents_payments.xlsx" , header=None,)
 kid_path = "kids_list.xlsx"
-parents_df = pd.read_excel(PARENT_FILE , header=None,)
 kids_df = pd.read_excel(kid_path,header=None,)
 # Split the first 3 rows
 kids_first_rows = kids_df.iloc[:3]   # first 3 rows
