@@ -18,7 +18,7 @@ class ProcessingThread(QThread):
     progress = pyqtSignal(str)
     finished = pyqtSignal(bool, str)
     
-    def __init__(self, parent_file, kid_file, output_file, mode, monthly_fee_a, monthly_fee_b):
+    def __init__(self, parent_file, kid_file, output_file, mode, monthly_fee_a, monthly_fee_b , a_classes, b_classes):
         super().__init__()
         self.parent_file = parent_file
         self.kid_file = kid_file
@@ -26,6 +26,8 @@ class ProcessingThread(QThread):
         self.mode = mode
         self.monthly_fee_a = monthly_fee_a
         self.monthly_fee_b = monthly_fee_b
+        self.a_classes = a_classes
+        self.b_classes = b_classes
     
     def run(self):
         """Run the payment processing."""
@@ -126,6 +128,10 @@ class PaymentProcessorGUI(QMainWindow):
         settings_group = self.create_settings_group()
         main_layout.addWidget(settings_group)
         
+        # After settings_group
+        class_groups_group = self.create_class_groups_group()
+        main_layout.addWidget(class_groups_group)
+
         # Output settings group
         output_group = self.create_output_group()
         main_layout.addWidget(output_group)
@@ -239,51 +245,77 @@ class PaymentProcessorGUI(QMainWindow):
         group.setLayout(layout)
         return group
     
+    def create_class_groups_group(self):
+        """Create group for customizing class groupings."""
+        group = QGroupBox("📚 Class Groupings")
+        layout = QVBoxLayout()
+
+        # A-group input
+        a_layout = QHBoxLayout()
+        a_label = QLabel("Classes (A5–A12):")
+        a_label.setMinimumWidth(150)
+        self.a_classes_input = QLineEdit("A5,A6,A7,A8,A9,A10,A11,A12")
+        a_layout.addWidget(a_label)
+        a_layout.addWidget(self.a_classes_input)
+        layout.addLayout(a_layout)
+
+        # B-group input
+        b_layout = QHBoxLayout()
+        b_label = QLabel("Classes (B0–B3, G1–G2):")
+        b_label.setMinimumWidth(150)
+        self.b_classes_input = QLineEdit("B0,B1,B2,B3,G1,G2")
+        b_layout.addWidget(b_label)
+        b_layout.addWidget(self.b_classes_input)
+        layout.addLayout(b_layout)
+
+        group.setLayout(layout)
+        return group
+    
     def create_settings_group(self):
-        """Create settings group."""
+        """Create settings group with clearer class group labels."""
         group = QGroupBox("⚙️ Processing Settings")
         layout = QVBoxLayout()
-        
+
         # Mode selection
         mode_layout = QHBoxLayout()
         mode_label = QLabel("Processing Mode:")
-        mode_label.setMinimumWidth(150)
+        mode_label.setMinimumWidth(180)
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["Production", "Test (100 rows)"])
-        self.mode_combo.setToolTip("Test mode processes only the first 100 rows")
-        
+        self.mode_combo.addItems(["Production", "Test (first 100 rows)"])
+        self.mode_combo.setToolTip("Test mode processes only the first 100 rows for quick validation.")
         mode_layout.addWidget(mode_label)
         mode_layout.addWidget(self.mode_combo)
         mode_layout.addStretch()
         layout.addLayout(mode_layout)
-        
-        # Monthly fees
-        fees_layout = QHBoxLayout()
-        
-        # Fee A
-        fee_a_label = QLabel("Monthly Fee (A5-A12):")
-        fee_a_label.setMinimumWidth(150)
+
+        # Monthly fees with explicit class lists
+        fee_a_label = QLabel("Monthly Fee – Group A (A5–A12, G2):")
+        fee_a_label.setMinimumWidth(180)
+        fee_a_label.setToolTip("Applies to classes: A5, A6, A7, A8, A9, A10, A11, A12, G2")
         self.fee_a_spinbox = QSpinBox()
-        self.fee_a_spinbox.setRange(1, 100)
+        self.fee_a_spinbox.setRange(1, 200)
         self.fee_a_spinbox.setValue(25)
         self.fee_a_spinbox.setSuffix(" €")
-        
-        fees_layout.addWidget(fee_a_label)
-        fees_layout.addWidget(self.fee_a_spinbox)
-        
-        # Fee B
-        fee_b_label = QLabel("Monthly Fee (B0-B3):")
-        fee_b_label.setMinimumWidth(150)
+
+        fee_b_label = QLabel("Monthly Fee – Group B (B0–B3, G1, G2):")
+        fee_b_label.setMinimumWidth(180)
+        fee_b_label.setToolTip("Applies to classes: B0, B1, B2, B3, G1, G2\nNote: G2 appears in both groups. Logic handles this.")
         self.fee_b_spinbox = QSpinBox()
-        self.fee_b_spinbox.setRange(1, 100)
+        self.fee_b_spinbox.setRange(1, 200)
         self.fee_b_spinbox.setValue(15)
         self.fee_b_spinbox.setSuffix(" €")
-        
-        fees_layout.addWidget(fee_b_label)
-        fees_layout.addWidget(self.fee_b_spinbox)
-        
-        layout.addLayout(fees_layout)
-        
+
+        fees_layout1 = QHBoxLayout()
+        fees_layout1.addWidget(fee_a_label)
+        fees_layout1.addWidget(self.fee_a_spinbox)
+
+        fees_layout2 = QHBoxLayout()
+        fees_layout2.addWidget(fee_b_label)
+        fees_layout2.addWidget(self.fee_b_spinbox)
+
+        layout.addLayout(fees_layout1)
+        layout.addLayout(fees_layout2)
+
         group.setLayout(layout)
         return group
     
@@ -359,9 +391,19 @@ class PaymentProcessorGUI(QMainWindow):
         self.progress_bar.setVisible(True)
         self.statusBar().showMessage("Processing...")
         
+        # Parse class lists
+        try:
+            a_classes = [c.strip() for c in self.a_classes_input.text().split(",") if c.strip()]
+            b_classes = [c.strip() for c in self.b_classes_input.text().split(",") if c.strip()]
+            if not a_classes or not b_classes:
+                raise ValueError("Class lists cannot be empty.")
+        except Exception as e:
+            # QMessageBox.warning(self, "Input Error", f"Invalid class list format:\n{e}")
+            return
+        
         # Start processing thread
         self.processing_thread = ProcessingThread(
-            parent_file, kids_file, output_file, mode, monthly_fee_a, monthly_fee_b
+            parent_file, kids_file, output_file, mode, monthly_fee_a, monthly_fee_b , a_classes, b_classes 
         )
         self.processing_thread.progress.connect(self.update_log)
         self.processing_thread.finished.connect(self.processing_finished)
