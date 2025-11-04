@@ -5,8 +5,9 @@ import pandas as pd
 
 from copy import copy
 # Load the Excel file (or CSV)
-parents_df = pd.read_excel("parents_payments.xlsx" , header=None,)
-kid_path = "kids_list_updated_test.xlsx"
+PARENT_FILE = "parents_payments.xlsx"
+kid_path = "kids_list.xlsx"
+parents_df = pd.read_excel(PARENT_FILE , header=None,)
 kids_df = pd.read_excel(kid_path,header=None,)
 # Split the first 3 rows
 kids_first_rows = kids_df.iloc[:3]   # first 3 rows
@@ -725,7 +726,7 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
         ws.insert_cols(last_colomn + 1)
         
         # Update the header for phone number column
-        phone_header_cell = ws.cell(row=3, column=phone_number_colomn)
+        phone_header_cell = ws.cell(row=3, column=phone_number_colomn + 1)
         phone_header_cell.value = "Phone Number"
         
         # Copy format from parent_name header
@@ -733,10 +734,10 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
         copy_cell_format(parent_header_cell, phone_header_cell)
         
         # Also update row 2 for the phone number column
-        phone_row2_cell = ws.cell(row=3, column=phone_number_col)
+        phone_row2_cell = ws.cell(row=3, column=phone_number_colomn + 1)
         copy_cell_format(ws.cell(row=2, column=parent_name_col), phone_row2_cell)
         
-        print(f"✅ Phone number column added at column {phone_number_col}")
+        print(f"✅ Phone number column added at column {phone_number_colomn}")
 
     # Process each kid row (starting from row 4)
     start_row = 4
@@ -758,7 +759,7 @@ def update_excel_with_payments(kids_df, kid_payment_status, kids_first_rows, kid
             
             if not phone_col_exists:
                 # Add phone number
-                phone_cell = ws.cell(row=excel_row, column=phone_number_colomn)
+                phone_cell = ws.cell(row=excel_row, column=phone_number_colomn + 1)
                 phone_cell.value = parent_info['phone_number']
                 # Copy format from parent cell
                 copy_cell_format(parent_cell, phone_cell)
